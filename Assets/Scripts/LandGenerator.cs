@@ -1,23 +1,30 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine.UI;
 using UnityEngine;
 using UnityEngine.UIElements;
-using static UnityEditor.Experimental.AssetDatabaseExperimental.AssetDatabaseCounters;
 
 public class LandGenerator : MonoBehaviour
 {
-    [SerializeField] private Text Test = null;
+    [SerializeField] private Text CropCount = null;
+    [SerializeField] private Text PreWorkTime = null;
+    [SerializeField] private Text FullWorkTime = null;
 
     [Header("Land Setting"), Space(10)]
     [SerializeField] private Transform[] LandPoles = null;
-    [SerializeField] private float PoleLerpScale = 0f;
-    [SerializeField] private CubeGenerator LandAllCollider = null; // Crop 전용 Collider도 추가 필요
-    [SerializeField] private CubeGenerator LandPartCollider = null;
+    [SerializeField] private float CropAreaScale = 0f;
+    [SerializeField] private float RaisingAreaScale = 0f;
+    [SerializeField] private CubeGenerator LandCollider = null; // Crop 전용 Collider도 추가 필요
+    [SerializeField] private CubeGenerator LandCropCollider = null;
+    [SerializeField] private CubeGenerator LandRaisingCollider = null;
     [SerializeField] private Land LandObject = null;
 
     private bool isGeneratingLand = false;
     private Land preSelectedLand = null;
+
+    [Header("Work Setting"), Space(10)]
+    [SerializeField] private Worker Worker = null;
+    [SerializeField] private Land.ScheduleType ScheduleType = default;
 
     private void Update()
     {
@@ -26,13 +33,19 @@ public class LandGenerator : MonoBehaviour
             if (Input.GetMouseButtonDown(0))
             {
                 Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                if (Physics.Raycast(ray, out RaycastHit hit, 1000, 64))
+
+                RaycastHit[] hits = Physics.RaycastAll(ray, 1000, 64);
+                preSelectedLand = null;
+                for (int i = 0; i < hits.Length; ++i)
                 {
-                    preSelectedLand = hit.transform.GetComponent<Land>();
-                    Debug.Log(preSelectedLand);
+                    if (hits[i].transform.CompareTag("Land"))
+                    {
+                        preSelectedLand = hits[i].transform.GetComponent<Land>();
+                        Debug.Log(preSelectedLand);
+                        break;
+                    }
                 }
-                else
-                    preSelectedLand = null;
+                Debug.Log(preSelectedLand);
             }
 
             if (Input.GetKeyDown(KeyCode.Q))
@@ -44,7 +57,12 @@ public class LandGenerator : MonoBehaviour
             if (preSelectedLand == null) return;
             if (Input.GetKeyDown(KeyCode.E))
             {
-                preSelectedLand.GenerateCrop();
+                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+                if (Physics.Raycast(ray, out RaycastHit hit, 1000, 1))
+                    Worker.SetActiveAgent(true, hit.point);
+
+                preSelectedLand.InitializeSchedule(ScheduleType, RefreshTimer);
+                preSelectedLand.InsertWorker(Worker);
             }
             else if (Input.GetKeyDown(KeyCode.R))
             {
@@ -53,17 +71,26 @@ public class LandGenerator : MonoBehaviour
         }
     }
 
+    private void RefreshTimer(int preTimer, int fullTimer)
+    {
+        PreWorkTime.text = string.Format("{0}", preTimer);
+        FullWorkTime.text = string.Format("{0}", fullTimer);
+    }
+
     private IEnumerator ConstructLand()
     {
         byte preGenerateType = 0;
 
-        int layer = -1 - (+ 4 + 8 + 64 + 128);
+        int layer = -1 - (4 + 8 + 64);
         int preIndex = 0;
 
         int minX = 0, maxX = 0;
         int minZ = 0, maxZ = 0;
+        Vector3 center = Vector3.zero;
+        Vector3[] polePosition = new Vector3[LandPoles.Length];
+        Vector3[] cropPolePosition = new Vector3[LandPoles.Length];
 
-        Test.text = "Phase : " + preIndex;
+        CropCount.text = "Phase : " + preIndex;
 
         bool isActive = true;
         while (isActive)
@@ -91,7 +118,7 @@ public class LandGenerator : MonoBehaviour
                         if (Input.GetMouseButtonDown(0))
                         {
                             preIndex++;
-                            Test.text = "Phase : " + preIndex;
+                            CropCount.text = "Phase : " + preIndex;
                             if (preIndex.Equals(LandPoles.Length - 1))
                                 preGenerateType = 1;
                         }
@@ -101,6 +128,8 @@ public class LandGenerator : MonoBehaviour
                         }
                         break;
                     case 1:
+                        int count = 0;
+
                         ray = Camera.main.ScreenPointToRay(Input.mousePosition);
                         if (Physics.Raycast(ray, out hit, 1000, layer))
                         {
@@ -109,9 +138,23 @@ public class LandGenerator : MonoBehaviour
                             else
                                 LandPoles[preIndex].position = hit.point;
 
+                            float sumAngle = 0f;
+                            for (int i = 0; i < 4; ++i)
+                            {
+                                int pole1 = i;
+                                int pole2 = (i + 1) % 4;
+                                int pole3 = (i + 2) % 4;
+                                sumAngle += Vector3.Angle((LandPoles[pole1].position - LandPoles[pole2].position).normalized, (LandPoles[pole3].position - LandPoles[pole2].position).normalized);
+                            }
+                            if (sumAngle < 356)
+                            {
+                                CropCount.text = "Not Installable";
+                                break;
+                            }
+
                             float minFloatX = float.MaxValue, maxFloatX = 0;
                             float minFloatZ = float.MaxValue, maxFloatZ = 0;
-                            Vector3 center = Vector3.zero;
+                            center = Vector3.zero;
                             for (int i = 0; i < LandPoles.Length; ++i)
                             {
                                 minFloatX = Mathf.Min(LandPoles[i].position.x, minFloatX);
@@ -122,31 +165,26 @@ public class LandGenerator : MonoBehaviour
                             }
                             center /= LandPoles.Length;
 
-                            Vector3[] allPolePosition = new Vector3[LandPoles.Length];
-                            Vector3[] partPolePosition = new Vector3[LandPoles.Length];
-                            for (int i = 0; i < partPolePosition.Length; ++i)
+                            for (int i = 0; i < cropPolePosition.Length; ++i)
                             {
-                                allPolePosition[i] = LandPoles[i].position;
-                                partPolePosition[i] = Vector3.Lerp(LandPoles[i].position, center, PoleLerpScale);
+                                polePosition[i] = LandPoles[i].position;
+                                cropPolePosition[i] = Vector3.Lerp(LandPoles[i].position, center, CropAreaScale);
                             }
-                            LandAllCollider.CreateCube(allPolePosition);
-                            LandPartCollider.CreateCube(partPolePosition);
+                            LandCollider.CreateCube(polePosition);
+                            LandCropCollider.CreateCube(cropPolePosition);
 
                             minX = Mathf.FloorToInt(minFloatX);
                             minZ = Mathf.FloorToInt(minFloatZ);
                             maxX = Mathf.CeilToInt(maxFloatX);
                             maxZ = Mathf.CeilToInt(maxFloatZ);
-
-                            int count = 0;
-                            bool isLargeX = maxX - minX > maxZ - minZ;
-                            if (isLargeX)
+                            if (maxX - minX > maxZ - minZ)
                             {
                                 for (int z = minZ; z < maxZ; ++z)
                                 {
                                     for (int x = minX; x < maxX; ++x)
                                     {
-                                        Vector3Int position = new Vector3Int(x, 0, z);
-                                        if (GetGenerateCropPosition(ref position, isLargeX) && (z & 1).Equals(1))
+                                        Vector3 position = new Vector3Int(x, 0, z);
+                                        if (GetCropPosition(ref position) && (z & 1).Equals(1))
                                             count++;
                                     }
                                 }
@@ -157,18 +195,25 @@ public class LandGenerator : MonoBehaviour
                                 {
                                     for (int z = minZ; z < maxZ; ++z)
                                     {
-                                        Vector3Int position = new Vector3Int(x, 0, z);
-                                        if (GetGenerateCropPosition(ref position, isLargeX) && (x & 1).Equals(1))
+                                        Vector3 position = new Vector3Int(x, 0, z);
+                                        if (GetCropPosition(ref position) && (x & 1).Equals(1))
                                             count++;
                                     }
                                 }
                             }
-                            Test.text = count.ToString();
+
+                            if (count > 100)
+                            {
+                                CropCount.text = "Not Installable";
+                                break;
+                            }
+                            else
+                                CropCount.text = count.ToString();
                         }
 
                         if (Input.GetMouseButtonDown(0))
                         {
-                            CompleteLand(minX, maxX, minZ, maxZ, 1);
+                            CompleteLand(minX, maxX, minZ, maxZ, count, center, cropPolePosition);
                             isActive = false;
                         }
                         else if (Input.GetMouseButtonDown(1))
@@ -181,7 +226,7 @@ public class LandGenerator : MonoBehaviour
             }
         }
 
-        Test.text = "None";
+        CropCount.text = "None";
         isGeneratingLand = false;
 
         bool RemoveLandPole()
@@ -191,67 +236,106 @@ public class LandGenerator : MonoBehaviour
         }
     }
 
-    private void CompleteLand(int minX, int maxX, int minZ, int maxZ, int changeIndex)
+    private void CompleteLand(int minX, int maxX, int minZ, int maxZ, int cropCount, Vector3 center, Vector3[] raisingPolePosition)
     {
         Transform[] landPoleArray = new Transform[LandPoles.Length];
-        for (int i = 0; i < LandPoles.Length; ++i)
+        InstantiatePole(0);
+        for (int i = 1; i < LandPoles.Length; ++i)
         {
-            landPoleArray[i] = Instantiate(LandPoles[i], LandPoles[i].position, LandPoles[i].rotation);
-            landPoleArray[i].gameObject.layer = 3;
-            LandPoles[i].position = Vector3.zero;
+            raisingPolePosition[i] = Vector3.Lerp(raisingPolePosition[i], raisingPolePosition[0], RaisingAreaScale); 
+            InstantiatePole(i);
         }
+        LandRaisingCollider.CreateCube(raisingPolePosition);
 
         int scaleX = maxX - minX, scaleZ = maxZ - minZ;
         TerrainGenerator.instance.PaintTerrainDirt(minX, minZ, scaleX, scaleZ, 64);
 
-        bool isLargeX = scaleX > scaleZ;
-        List<Vector3[]> cropPositionList = new List<Vector3[]>();
-        if (isLargeX)
+        List<Vector3> raisingPositionList = new List<Vector3>();
+        List<Vector3[]> allCropPositionList = new List<Vector3[]>();
+        if (scaleX > scaleZ)
         {
             for (int z = minZ; z < maxZ; ++z)
             {
-                List<Vector3> positionList = new List<Vector3>();
+                List<Vector3> cropPositionList = new List<Vector3>();
                 for (int x = minX; x < maxX; ++x)
                 {
-                    Vector3Int position = new Vector3Int(x, 0, z);
-                    if (GetGenerateCropPosition(ref position, isLargeX) && (z & 1).Equals(1))
-                        positionList.Add(position);
+                    Vector3 position = new Vector3(x, 0, z);
+                    if (GetCropPosition(ref position) && (z & 1).Equals(1))
+                    {
+                        cropPositionList.Add(position);
+                        if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
+                    }
                 }
 
-                if (positionList.Count.Equals(0)) continue;
-                cropPositionList.Add(positionList.ToArray());
+                if (cropPositionList.Count.Equals(0)) continue;
+                allCropPositionList.Add(cropPositionList.ToArray());
             }
         }
         else
         {
             for (int x = minX; x < maxX; ++x)
             {
-                List<Vector3> positionList = new List<Vector3>();
+                List<Vector3> cropPositionList = new List<Vector3>();
                 for (int z = minZ; z < maxZ; ++z)
                 {
-                    Vector3Int position = new Vector3Int(x, 0, z);
-                    if (GetGenerateCropPosition(ref position, isLargeX) && (x & 1).Equals(1))
-                        positionList.Add(position);
+                    Vector3 position = new Vector3(x, 0, z);
+                    if (GetCropPosition(ref position) && (x & 1).Equals(1))
+                    {
+                        cropPositionList.Add(position);
+                        if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
+                    }
                 }
 
-                if (positionList.Count.Equals(0)) continue;
-                cropPositionList.Add(positionList.ToArray());
+                if (cropPositionList.Count.Equals(0)) continue;
+                allCropPositionList.Add(cropPositionList.ToArray());
             }
         }
 
-        Land landClone = Instantiate(LandObject, LandAllCollider.transform.position, Quaternion.identity);
+        Land landClone = Instantiate(LandObject, LandCollider.transform.position, Quaternion.identity);
         landClone.InitializeObject();
-        landClone.InitializeData(ref cropPositionList, landPoleArray, LandAllCollider.GeneratedMseh);
+        landClone.InitializeData(ref allCropPositionList, ref raisingPositionList, landPoleArray, LandCollider.GeneratedMseh, cropCount);
 
-        LandAllCollider.RefreshCube();
-        LandPartCollider.RefreshCube();
+        LandCollider.RefreshCube();
+        LandCropCollider.RefreshCube();
+        LandRaisingCollider.RefreshCube();
+
+        void InstantiatePole(int index)
+        {
+            landPoleArray[index] = Instantiate(LandPoles[index], LandPoles[index].position, LandPoles[index].rotation);
+            landPoleArray[index].gameObject.layer = 3;
+            //LandPoles[index].position = Vector3.zero;
+        }
     }
 
-    private bool GetGenerateCropPosition(ref Vector3Int position, bool isLargeX)
+    private bool GetCropPosition(ref Vector3 position)
     {
         position.y = 100;
-        bool isPossible = Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, 128);
-        position = Vector3Int.RoundToInt(hit.point);
+        RaycastHit[] hits = Physics.RaycastAll(position, Vector3.down, 200, 64);
+
+        bool isPossible = false;
+        for (int i = 0; i < hits.Length; ++i)
+            if (hits[i].transform.CompareTag("CropArea"))
+            {
+                isPossible = true;
+                position = hits[i].point;
+                break;
+            }
+        return isPossible;
+    }
+
+    private bool GetRaisingPosition(ref Vector3 position)
+    {
+        position.y = 100;
+        RaycastHit[] hits = Physics.RaycastAll(position, Vector3.down, 200, 64);
+
+        bool isPossible = false;
+        for (int i = 0; i < hits.Length; ++i)
+            if (hits[i].transform.CompareTag("RaisingArea"))
+            {
+                isPossible = true;
+                position = hits[i].point;
+                break;
+            }
         return isPossible;
     }
 }
