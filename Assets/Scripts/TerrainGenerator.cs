@@ -13,7 +13,8 @@ public class TerrainGenerator : MonoBehaviour
     [SerializeField] private Terrain MainTerrain = null;
     [SerializeField] private float StartTerrainHeight = 0f;
     [SerializeField] private Vector3Int TerrainScale = Vector3Int.zero;
-    [SerializeField] private int TerrainDirtIndex = 0;
+    [SerializeField] private int DirtIndex_1 = 0;
+    [SerializeField] private int DirtIndex_2 = 0;
 
     private int alphaMapCount = 0;
     private float[,] heightMapArray = null;
@@ -82,10 +83,31 @@ public class TerrainGenerator : MonoBehaviour
                 Vector3Int position = new Vector3Int(x + sx, 100, z + sz);
                 if (Physics.Raycast(position, Vector3.down, 200, layer))
                 {
-                    PaintDirt(x, z, position.x, position.z);
+                    for (int i = 0; i < alphaMapCount; ++i)
+                    {
+                        alphaMapArray[position.z, position.x, i] = 0;
+                        preAlphaMapArray[z, x, i] = 0;
+                    }
+
+                    alphaMapArray[position.z, position.x, DirtIndex_1] = 1;
+                    preAlphaMapArray[z, x, DirtIndex_1] = 1;
+
                     Vector3Int randomDirection = direction[Random.Range(0, direction.Length)];
                     Vector3Int randomPosition = position + randomDirection;
-                    PaintDirt(x + randomDirection.x, z + randomDirection.z, randomPosition.x, randomPosition.z);
+
+                    int randomX = x + randomDirection.x;
+                    int randomZ = z + randomDirection.z;
+                    if (randomX < 0 || randomZ < 0 || randomX >= scaleX || randomZ >= scaleZ || 
+                        alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_1].Equals(1)) continue;
+
+                    for (int i = 0; i < alphaMapCount; ++i)
+                    {
+                        alphaMapArray[randomPosition.z, randomPosition.x, i] = 0;
+                        preAlphaMapArray[randomZ, randomX, i] = 0;
+                    }
+
+                    alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_2] = 1;
+                    preAlphaMapArray[randomZ, randomX, DirtIndex_2] = 1;
                 }
                 else
                 {
@@ -94,22 +116,43 @@ public class TerrainGenerator : MonoBehaviour
                 }
             }
         }
-
         MainTerrain.terrainData.SetAlphamaps(sx, sz, preAlphaMapArray);
+    }
 
+    public void PaintTerrainDefault(int sx, int sz, int scaleX, int scaleZ, int layer, int hashCode)
+    {
+        scaleX += 2;
+        scaleZ += 2;
+        float[,,] preAlphaMapArray = new float[scaleZ, scaleX, alphaMapCount];
 
-        void PaintDirt(int x, int z, int realX, int realZ)
+        for (int z = 0; z < scaleZ; ++z)
         {
-            if (x < 0 || z < 0 || x >= scaleX || z >= scaleZ) return;
-
-            for (int i = 0; i < alphaMapCount; ++i)
+            for (int x = 0; x < scaleX; ++x)
             {
-                alphaMapArray[realZ, realX, i] = 0;
-                preAlphaMapArray[z, x, i] = 0;
+                Vector3Int position = new Vector3Int(x + sx, 100, z + sz);
+                if (Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, layer) && hit.transform.GetHashCode().Equals(hashCode))
+                {
+                    alphaMapArray[position.z, position.x, DirtIndex_1] = 0;
+                    preAlphaMapArray[z, x, DirtIndex_1] = 0;
+                    alphaMapArray[position.z, position.x, 0] = 1;
+                    preAlphaMapArray[z, x, 0] = 1;
+                }
+                else
+                {
+                    for (int i = 0; i < alphaMapCount; ++i)
+                    {
+                        if (alphaMapArray[position.z, position.x, DirtIndex_2].Equals(1))
+                        {
+                            alphaMapArray[position.z, position.x, DirtIndex_2] = 0;
+                            alphaMapArray[position.z, position.x, 0] = 1;
+                            preAlphaMapArray[z, x, 0] = 1;
+                        }
+                        else
+                            preAlphaMapArray[z, x, i] = alphaMapArray[position.z, position.x, i];
+                    }
+                }
             }
-
-            alphaMapArray[realZ, realX, TerrainDirtIndex] = 1;
-            preAlphaMapArray[z, x, TerrainDirtIndex] = 1;
         }
+        MainTerrain.terrainData.SetAlphamaps(sx, sz, preAlphaMapArray);
     }
 }

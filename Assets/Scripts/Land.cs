@@ -19,7 +19,6 @@ public class Land : MonoBehaviour
     private int preCropColumn = 0;
 
     [Header("Work Setting"), Space(10)]
-    [SerializeField] private float RaisingRate = 0f;
     [SerializeField] private float[] EachScheduleTime = null;
 
     private int preCropWorkCount = 0;
@@ -39,6 +38,7 @@ public class Land : MonoBehaviour
 
     private ScheduleType preScheduleType;
 
+    #region Land Initialize Functions
     public void InitializeObject()
     {
         cropPositionList = new List<Vector3[]>();
@@ -61,7 +61,9 @@ public class Land : MonoBehaviour
                 if (Physics.Raycast(positionArray[col], Vector3.down, out RaycastHit hit, 200, 1))
                 {
                     cropObjectList[index] = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    cropObjectList[index++].transform.position = hit.point;
+                    cropObjectList[index].transform.position = hit.point;
+                    cropObjectList[index].transform.SetParent(transform);
+                    index++;
                 }
             }    
         }
@@ -77,6 +79,23 @@ public class Land : MonoBehaviour
         preCropRow = 0;
         preCropColumn = 0;
     }
+
+    public void DestroyLand()
+    {
+        int minX = int.MaxValue, maxX = 0;
+        int minZ = int.MaxValue, maxZ = 0;
+        for (int i = 0; i < landPoleArray.Length; ++i)
+        {
+            minX = Mathf.FloorToInt(Mathf.Min(landPoleArray[i].position.x, minX));
+            minZ = Mathf.FloorToInt(Mathf.Min(landPoleArray[i].position.z, minZ));
+            maxX = Mathf.CeilToInt(Mathf.Max(landPoleArray[i].position.x, maxX));
+            maxZ = Mathf.CeilToInt(Mathf.Max(landPoleArray[i].position.z, maxZ));
+        }
+        TerrainGenerator.instance.PaintTerrainDefault(minX, minZ, maxX - minX, maxZ - minZ, 64, transform.GetHashCode());
+
+        Destroy(gameObject);
+    }
+    #endregion
 
     public void GenerateCrop()
     {
