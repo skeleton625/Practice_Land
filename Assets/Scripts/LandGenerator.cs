@@ -162,8 +162,12 @@ public class LandGenerator : MonoBehaviour
                         if (preIndex.Equals(polePosition.Length - 1))
                         {
                             preGenerateType = 2;
+                            // 백터 방향에 따라 작물 배열이 정렬되는 축이 달라짐
                             Vector3 direction = (polePosition[1] - polePosition[0]).normalized;
-                            cropAngle = Vector3.Angle(direction, Vector3.right);
+                            if ((direction.x <= 0 && direction.z >= 0) || (direction.x >= 0 && direction.z >= 0))
+                                cropAngle = Vector3.Angle(direction, Vector3.right);
+                            else if ((direction.x >= 0 && direction.z <= 0) || (direction.x <= 0 && direction.z <= 0))
+                                cropAngle = Vector3.Angle(direction, -Vector3.right);
                         }
                     }
                     else if (Input.GetMouseButtonDown(1))
@@ -242,8 +246,7 @@ public class LandGenerator : MonoBehaviour
                             }
                         }
 
-                        // if (isPossible && count <= 100 && sumAngle > 356)
-                        if (isPossible)
+                        if (isPossible && count <= 100 && sumAngle > 356)
                         {
                             CropCount.text = count.ToString();
                         }
@@ -271,7 +274,7 @@ public class LandGenerator : MonoBehaviour
                             fixMaxX = Mathf.CeilToInt(Mathf.Max(polePosition[i].x, fixMaxX));
                             fixMaxZ = Mathf.CeilToInt(Mathf.Max(polePosition[i].z, fixMaxZ));
                         }
-                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX - 2, fixMinZ - 2, fixMaxX - fixMinX + 1, fixMaxZ - fixMinZ + 1, 64);
+                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX - 2, fixMinZ - 2, fixMaxX - fixMinX + 2, fixMaxZ - fixMinZ + 2, 64);
 
                         LandCollider.CreateCube(polePosition);
                         CompleteLand(rotX, rotZ, polePosition, cropPolePosition, cropAngle);
@@ -365,13 +368,12 @@ public class LandGenerator : MonoBehaviour
         {
             for (float z = rotZ.x; z < rotZ.y; ++z)
             {
+                isEven = !isEven;
+                if (isEven) continue;
                 for (float x = rotX.x; x < rotX.y; ++x)
                 {
                     Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                    GameObject clone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    clone.transform.position = position;
-
-                    //if (!GetCropPosition(ref position)) continue;
+                    if (!GetCropPosition(ref position)) continue;
 
                     allCropPositionList.Add(position);
                     if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
@@ -382,13 +384,13 @@ public class LandGenerator : MonoBehaviour
         {
             for (float x = rotX.x; x < rotX.y; ++x)
             {
+                isEven = !isEven;
+                if (isEven) continue;
+
                 for (float z = rotZ.x; z < rotZ.y; ++z)
                 {
                     Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                    GameObject clone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    clone.transform.position = position;
-
-                    //if (!GetCropPosition(ref position)) continue;
+                    if (!GetCropPosition(ref position)) continue;
 
                     allCropPositionList.Add(position);
                     if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);

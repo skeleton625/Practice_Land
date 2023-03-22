@@ -90,6 +90,7 @@ public class TerrainGenerator : MonoBehaviour
                     alphaMapArray[position.z, position.x, DirtIndex_1] = 1;
                     preAlphaMapArray[z, x, DirtIndex_1] = 1;
 
+                    /*
                     Vector3Int randomDirection = direction[Random.Range(0, direction.Length)];
                     Vector3Int randomPosition = position + randomDirection;
 
@@ -106,6 +107,7 @@ public class TerrainGenerator : MonoBehaviour
 
                     alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_2] = 1;
                     preAlphaMapArray[randomZ, randomX, DirtIndex_2] = 1;
+                    */
                 }
                 else
                 {

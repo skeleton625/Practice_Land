@@ -370,7 +370,7 @@ MonoBehaviour:
   - {fileID: 3588418996300207472}
   PoleObject: {fileID: 3588418995889039878, guid: 4b431d77e941bd34d9a147655beab23f, type: 3}
   WallObject: {fileID: 3858485412897694759, guid: ff4905dfbb2551d44a472e7c6faea5b7, type: 3}
-  CropAreaScale: 0.925
+  CropAreaScale: 0.9
   RaisingAreaScale: 0.4
   LandCollider: {fileID: 1939561683}
   LandCropCollider: {fileID: 1095640215}
