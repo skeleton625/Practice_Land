@@ -72,8 +72,6 @@ public class TerrainGenerator : MonoBehaviour
 
     public void PaintTerrainDirt(int sx, int sz, int scaleX, int scaleZ, int layer)
     {
-        scaleX += 2;
-        scaleZ += 2;
         float[,,] preAlphaMapArray = new float[scaleZ, scaleX, alphaMapCount];
 
         for (int z = 0; z < scaleZ; ++z)
@@ -97,7 +95,7 @@ public class TerrainGenerator : MonoBehaviour
 
                     int randomX = x + randomDirection.x;
                     int randomZ = z + randomDirection.z;
-                    if (randomX < 0 || randomZ < 0 || randomX >= scaleX || randomZ >= scaleZ || 
+                    if (randomX < 0 || randomZ < 0 || randomX >= scaleX || randomZ >= scaleZ ||
                         alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_1].Equals(1)) continue;
 
                     for (int i = 0; i < alphaMapCount; ++i)

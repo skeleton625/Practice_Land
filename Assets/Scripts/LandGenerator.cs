@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Collections;
 using UnityEngine.UI;
 using UnityEngine;
+using static UnityEditor.Experimental.AssetDatabaseExperimental.AssetDatabaseCounters;
+using System.Reflection;
 
 public class LandGenerator : MonoBehaviour
 {
@@ -18,6 +20,7 @@ public class LandGenerator : MonoBehaviour
     [SerializeField] private CubeGenerator LandCollider = null; // Crop 전용 Collider도 추가 필요
     [SerializeField] private CubeGenerator LandCropCollider = null;
     [SerializeField] private CubeGenerator LandRaisingCollider = null;
+    [SerializeField] private TagCollider[] LandWallCollider = null;
     [SerializeField] private Land LandObject = null;
 
     private bool isGeneratingLand = false;
@@ -92,6 +95,7 @@ public class LandGenerator : MonoBehaviour
         Vector2 rotZ = Vector2.zero;
         float cropAngle = 0f;
 
+        Vector3 center = Vector3.zero;
         Vector3 prePosition = Vector3.zero;
         Vector3[] polePosition = new Vector3[LandPoles.Length];
         Vector3[] cropPolePosition = new Vector3[LandPoles.Length];
@@ -158,7 +162,8 @@ public class LandGenerator : MonoBehaviour
                         if (preIndex.Equals(polePosition.Length - 1))
                         {
                             preGenerateType = 2;
-                            cropAngle = Vector3.Angle((polePosition[1] - polePosition[0]).normalized, Vector3.right);
+                            Vector3 direction = (polePosition[1] - polePosition[0]).normalized;
+                            cropAngle = Vector3.Angle(direction, Vector3.right);
                         }
                     }
                     else if (Input.GetMouseButtonDown(1))
@@ -175,6 +180,8 @@ public class LandGenerator : MonoBehaviour
                         RemoveLandPole(preIndex - 1);
                         RemoveLandPole(preIndex);
                         polePosition[preIndex--] = Vector3.zero;
+
+                        LandCropCollider.RefreshCube();
                         break;
                     }
 
@@ -195,30 +202,14 @@ public class LandGenerator : MonoBehaviour
                         ChangeWall(preIndex - 1, polePosition[preIndex - 1], prePosition);
                         ChangeWall(preIndex, polePosition[0], prePosition);
 
-                        float sumAngle = 0f;
-                        for (int i = 0; i < 4; ++i)
-                        {
-                            int pole1 = i;
-                            int pole2 = (i + 1) % 4;
-                            int pole3 = (i + 2) % 4;
-                            sumAngle += Vector3.Angle((polePosition[pole1] - polePosition[pole2]).normalized,
-                                                      (polePosition[pole3] - polePosition[pole2]).normalized);
-                        }
-                        if (sumAngle < 356)
-                        {
-                            CropCount.text = "Not Installable";
-                            break;
-                        }
-
-                        Vector3 center = Vector3.zero;
+                        center = Vector3.zero;
                         for (int i = 0; i < polePosition.Length; ++i) center += polePosition[i];
                         center /= polePosition.Length;
 
                         for (int i = 0; i < cropPolePosition.Length; ++i)
-                        {
-                            cropPolePosition[i] = Vector3.Lerp(polePosition[i], center, CropAreaScale);
-                        }
-                        LandCollider.CreateCube(polePosition);
+                            cropPolePosition[i] = Vector3.Lerp(center, polePosition[i], CropAreaScale);
+                        for (int i = 0; i < polePosition.Length; ++i)
+                            rotatedPositions[i] = Quaternion.Euler(0, cropAngle, 0) * (polePosition[i] - polePosition[0]);
                         LandCropCollider.CreateCube(cropPolePosition);
 
                         rotX.x = float.MaxValue;
@@ -233,51 +224,46 @@ public class LandGenerator : MonoBehaviour
                             rotZ.y = Mathf.Max(rotatedPositions[i].z, rotZ.y);
                         }
 
-                        if (rotX.y - rotX.x > rotZ.y - rotZ.x)
+                        bool isPossible = GetCropCounts(ref count);
+
+                        float sumAngle = 0f;
+                        for (int i = 0; i < 4; ++i)
                         {
-                            bool isEven = true;
-                            for (float z = rotZ.x; z < rotZ.y; ++z)
+                            int pole1 = i;
+                            int pole2 = (i + 1) % 4;
+                            int pole3 = (i + 2) % 4;
+                            sumAngle += Vector3.Angle((polePosition[pole1] - polePosition[pole2]).normalized,
+                                                      (polePosition[pole3] - polePosition[pole2]).normalized);
+                        
+                            if (LandWallCollider[i].IsConflict)
                             {
-                                isEven = !isEven;
-                                for (float x = rotX.x; x < rotX.y; ++x)
-                                {
-                                    Vector3 position = Quaternion.Euler(0, cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                                    if (GetCropPosition(ref position) && isEven)
-                                        count++;
-                                }
+                                isPossible = false;
+                                break;
                             }
+                        }
+
+                        // if (isPossible && count <= 100 && sumAngle > 356)
+                        if (isPossible)
+                        {
+                            CropCount.text = count.ToString();
                         }
                         else
-                        {
-                            bool isEven = true;
-                            for (float x = rotX.x; x < rotX.y; ++x)
-                            {
-                                isEven = !isEven;
-                                for (float z = rotZ.x; z < rotZ.y; ++z)
-                                {
-                                    Vector3 position = Quaternion.Euler(0, cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                                    if (GetCropPosition(ref position) && isEven)
-                                        count++;
-                                }
-                            }
-                        }
-
-                        for (int i = 0; i < polePosition.Length; ++i)
-                            rotatedPositions[i] = Quaternion.Euler(0, -cropAngle, 0) * (polePosition[i] - polePosition[0]);
-
-                        if (count > 100)
                         {
                             CropCount.text = "Not Installable";
                             break;
                         }
-                        else
-                            CropCount.text = count.ToString();
+
                     }
 
                     if (Input.GetMouseButtonDown(0))
                     {
-                        int fixMinX = 0, fixMaxX = 0;
-                        int fixMinZ = 0, fixMaxZ = 0;
+                        Vector3[] largePolePosition = new Vector3[polePosition.Length];
+                        for (int i = 0; i < largePolePosition.Length; ++i)
+                            largePolePosition[i] = polePosition[i] + (polePosition[i] - center).normalized;
+                        LandCollider.CreateCube(largePolePosition);
+
+                        int fixMinX = int.MaxValue, fixMaxX = 0;
+                        int fixMinZ = int.MaxValue, fixMaxZ = 0;
                         for (int i = 0; i < polePosition.Length; ++i)
                         {
                             fixMinX = Mathf.FloorToInt(Mathf.Min(polePosition[i].x, fixMinX));
@@ -285,9 +271,10 @@ public class LandGenerator : MonoBehaviour
                             fixMaxX = Mathf.CeilToInt(Mathf.Max(polePosition[i].x, fixMaxX));
                             fixMaxZ = Mathf.CeilToInt(Mathf.Max(polePosition[i].z, fixMaxZ));
                         }
-                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX, fixMinZ, fixMaxX - fixMinX, fixMaxZ - fixMinZ, 64);
+                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX - 2, fixMinZ - 2, fixMaxX - fixMinX + 1, fixMaxZ - fixMinZ + 1, 64);
 
-                        CompleteLand(rotX, rotZ, polePosition, cropPolePosition, cropAngle, count);
+                        LandCollider.CreateCube(polePosition);
+                        CompleteLand(rotX, rotZ, polePosition, cropPolePosition, cropAngle);
                         isActive = false;
                     }
                     break;
@@ -315,66 +302,108 @@ public class LandGenerator : MonoBehaviour
             LandPoles[index].localScale = new Vector3(.25f, 1, (end - start).magnitude);
             LandPoles[index].LookAt(prePosition);
         }
+
+        bool GetCropCounts(ref int count)
+        {
+            bool isEven = true;
+            if ((polePosition[1] - polePosition[0]).magnitude > (polePosition[2] - polePosition[1]).magnitude)
+            {
+                for (float z = rotZ.x; z < rotZ.y; ++z)
+                {
+                    isEven = !isEven;
+                    if (isEven) continue;
+
+                    for (float x = rotX.x; x < rotX.y; ++x)
+                    {
+                        Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
+                        if (!GetCropPosition(ref position)) continue;
+
+                        count++;
+                        position.y = 100;
+                        if (Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, 64) && hit.transform.CompareTag("BuildingCollider")) return false;
+                    }
+                }
+            }
+            else
+            {
+                for (float x = rotX.x; x < rotX.y; ++x)
+                {
+                    isEven = !isEven;
+                    if (isEven) continue;
+
+                    for (float z = rotZ.x; z < rotZ.y; ++z)
+                    {
+                        Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
+                        if (!GetCropPosition(ref position)) continue;
+
+                        count++;
+                        position.y = 100;
+                        if (Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, 64) && hit.transform.CompareTag("BuildingCollider")) return false;
+                    }
+                }
+            }
+            return true;
+        }
     }
 
-    private void CompleteLand(Vector2 rotX, Vector2 rotZ, Vector3[] polePosition, Vector3[] raisingPolePosition, float angle, int cropCount)
+    private void CompleteLand(Vector2 rotX, Vector2 rotZ, Vector3[] polePosition, Vector3[] raisingPolePosition, float cropAngle)
     {
+        // GENERATE CROP
         Transform[] landPoleArray = new Transform[polePosition.Length];
-
-        Vector3 poleCenter = polePosition[0];
-        InstantiatePole(0);
-        for (int i = 1; i < polePosition.Length; ++i)
+        for (int i = 0; i < polePosition.Length; ++i)
         {
-            raisingPolePosition[i] = Vector3.Lerp(raisingPolePosition[i], raisingPolePosition[0], RaisingAreaScale);
-            InstantiatePole(i);
+            raisingPolePosition[i] = Vector3.Lerp(raisingPolePosition[0], raisingPolePosition[i], RaisingAreaScale);
+            landPoleArray[i] = Instantiate(PoleObject, polePosition[i], LandPoles[i].rotation);
+            landPoleArray[i].gameObject.layer = 3;
         }
         LandRaisingCollider.CreateCube(raisingPolePosition);
 
+        bool isEven = true;
         List<Vector3> raisingPositionList = new List<Vector3>();
-        List<Vector3[]> allCropPositionList = new List<Vector3[]>();
-        if (rotX.y - rotX.x > rotZ.y - rotZ.x)
+        List<Vector3> allCropPositionList = new List<Vector3>();
+        if ((polePosition[1] - polePosition[0]).magnitude > (polePosition[2] - polePosition[1]).magnitude)
         {
-            bool isEven = true;
             for (float z = rotZ.x; z < rotZ.y; ++z)
             {
-                isEven = !isEven;
-                List<Vector3> cropPositionList = new List<Vector3>();
                 for (float x = rotX.x; x < rotX.y; ++x)
                 {
-                    Vector3 position = Quaternion.Euler(0, angle, 0) * new Vector3(x, 0, z) + poleCenter;
-                    if (GetCropPosition(ref position) && isEven)
-                    {
-                        cropPositionList.Add(position);
-                        if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
-                    }
+                    Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
+                    GameObject clone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    clone.transform.position = position;
+
+                    //if (!GetCropPosition(ref position)) continue;
+
+                    allCropPositionList.Add(position);
+                    if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
                 }
-                if (cropPositionList.Count > 0) allCropPositionList.Add(cropPositionList.ToArray());
             }
         }
         else
         {
-            bool isEven = true;
             for (float x = rotX.x; x < rotX.y; ++x)
             {
-                isEven = !isEven;
-                List<Vector3> cropPositionList = new List<Vector3>();
                 for (float z = rotZ.x; z < rotZ.y; ++z)
                 {
-                    Vector3 position = Quaternion.Euler(0, angle, 0) * new Vector3(x, 0, z) + poleCenter;
-                    if (GetCropPosition(ref position) && isEven)
-                    {
-                        cropPositionList.Add(position);
-                        if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
-                    }
+                    Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
+                    GameObject clone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    clone.transform.position = position;
+
+                    //if (!GetCropPosition(ref position)) continue;
+
+                    allCropPositionList.Add(position);
+                    if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
                 }
-                if (cropPositionList.Count > 0) allCropPositionList.Add(cropPositionList.ToArray());
             }
         }
 
+        // GENERATE LAND
         Land landClone = Instantiate(LandObject, LandCollider.transform.position, Quaternion.identity);
-        landClone.InitializeObject();
-        landClone.InitializeData(ref allCropPositionList, ref raisingPositionList, landPoleArray, LandCollider.GeneratedMseh, cropCount);
+        landClone.InitializeData(ref allCropPositionList, ref raisingPositionList, landPoleArray, LandCollider.GeneratedMseh, LandCropCollider.GeneratedMseh);
+        LandCollider.RefreshCube();
+        LandCropCollider.RefreshCube();
+        LandRaisingCollider.RefreshCube();
 
+        // GENERATE LAND WALL
         for (int i = 0; i < polePosition.Length; ++i)
         {
             int nextIndex = (i + 1) % polePosition.Length;
@@ -388,9 +417,7 @@ public class LandGenerator : MonoBehaviour
                 if (allLength >= wallLength)
                 {
                     Transform wall = Instantiate(WallObject, Vector3.Lerp(prePosition, nextPosition, .5f), LandPoles[i].rotation);
-                    Transform pole = Instantiate(PoleObject, nextPosition, LandPoles[i].rotation);
                     wall.SetParent(landClone.transform);
-                    pole.SetParent(landClone.transform);
                     prePosition = nextPosition;
                     allLength -= wallLength;
                     if (allLength < wallLength) nextPosition = polePosition[nextIndex];
@@ -406,14 +433,20 @@ public class LandGenerator : MonoBehaviour
             }
         }
 
-        LandCollider.RefreshCube();
-        LandCropCollider.RefreshCube();
-        LandRaisingCollider.RefreshCube();
-
-        void InstantiatePole(int index)
+        bool GetRaisingPosition(ref Vector3 position)
         {
-            landPoleArray[index] = Instantiate(PoleObject, polePosition[index], LandPoles[index].rotation);
-            landPoleArray[index].gameObject.layer = 3;
+            position.y = 100;
+            RaycastHit[] hits = Physics.RaycastAll(position, Vector3.down, 200, 64);
+
+            for (int i = 0; i < hits.Length; ++i)
+            {
+                if (hits[i].transform.CompareTag("RaisingArea"))
+                {
+                    position = hits[i].point;
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -422,30 +455,14 @@ public class LandGenerator : MonoBehaviour
         position.y = 100;
         RaycastHit[] hits = Physics.RaycastAll(position, Vector3.down, 200, 64);
 
-        bool isPossible = false;
         for (int i = 0; i < hits.Length; ++i)
+        {
             if (hits[i].transform.CompareTag("CropArea"))
             {
-                isPossible = true;
                 position = hits[i].point;
-                break;
+                return true;
             }
-        return isPossible;
-    }
-
-    private bool GetRaisingPosition(ref Vector3 position)
-    {
-        position.y = 100;
-        RaycastHit[] hits = Physics.RaycastAll(position, Vector3.down, 200, 64);
-
-        bool isPossible = false;
-        for (int i = 0; i < hits.Length; ++i)
-            if (hits[i].transform.CompareTag("RaisingArea"))
-            {
-                isPossible = true;
-                position = hits[i].point;
-                break;
-            }
-        return isPossible;
+        }
+        return false;
     }
 }

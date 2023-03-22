@@ -11,12 +11,11 @@ public class Land : MonoBehaviour
     public enum ScheduleType { None = 0, Plowing = 1, Planting = 2, Raising = 3, Seeding = 4, Weeding = 5, Harvest = 6 };
 
     [Header("Land Collider Setting"), Space(10)]
-    [SerializeField] private MeshCollider landMeshCollider = null;
+    [SerializeField] private MeshCollider LandUIMesh = null;
+    [SerializeField] private MeshCollider LandColliderMesh = null;
 
-    private int rowDirection = 1;
-    private int colDirection = 1;
-    private int preCropRow = 0;
-    private int preCropColumn = 0;
+    private int moveDirection = 1;
+    private int preCropIndex = 0;
 
     [Header("Work Setting"), Space(10)]
     [SerializeField] private float[] EachScheduleTime = null;
@@ -32,52 +31,41 @@ public class Land : MonoBehaviour
     private GameObject[] cropObjectList = null;
 
     private List<Vector3> raisingPositionList = null;
-    private List<Vector3[]> cropPositionList = null;
+    private List<Vector3> allCropPositionList = null;
 
     private Action<int, int> WorkTimer = null;
 
     private ScheduleType preScheduleType;
 
     #region Land Initialize Functions
-    public void InitializeObject()
-    {
-        cropPositionList = new List<Vector3[]>();
-    }
-
-    public void InitializeData(ref List<Vector3[]> cropPositionList, ref List<Vector3> raisingPositionList, Transform[] landPoleArray, Mesh colliderMesh, int cropCount)
+    public void InitializeData(ref List<Vector3> allCropPositionList, ref List<Vector3> raisingPositionList, Transform[] landPoleArray, Mesh uiMesh, Mesh colliderMesh)
     {
         this.raisingPositionList = raisingPositionList;
-        this.cropPositionList = cropPositionList;
+        this.allCropPositionList = allCropPositionList;
         this.landPoleArray = landPoleArray;
 
-        int index = 0;
-        cropObjectList = new GameObject[cropCount];
-        for (int row = 0; row < cropPositionList.Count; ++row)
+        cropObjectList = new GameObject[allCropPositionList.Count];
+        for (int i = 0; i < allCropPositionList.Count; ++i)
         {
-            Vector3[] positionArray = cropPositionList[row];
-            for (int col = 0; col < positionArray.Length; ++col)
+            Vector3 position = allCropPositionList[i];
+            position.y = 100;
+            if (Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, 1))
             {
-                positionArray[col].y = 100;
-                if (Physics.Raycast(positionArray[col], Vector3.down, out RaycastHit hit, 200, 1))
-                {
-                    cropObjectList[index] = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    cropObjectList[index].transform.position = hit.point;
-                    cropObjectList[index].transform.SetParent(transform);
-                    index++;
-                }
-            }    
+                cropObjectList[i] = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                cropObjectList[i].transform.position = hit.point;
+                cropObjectList[i].transform.SetParent(transform);
+            }
         }
 
         for (int i = 0; i < landPoleArray.Length; ++i)
             landPoleArray[i].SetParent(transform);
 
-        landMeshCollider.sharedMesh = colliderMesh;
+        LandUIMesh.sharedMesh = uiMesh;
+        LandColliderMesh.sharedMesh = colliderMesh;
 
         preScheduleType = ScheduleType.None;
-        rowDirection = 1;
-        colDirection = 1;
-        preCropRow = 0;
-        preCropColumn = 0;
+        moveDirection = 1;
+        preCropIndex = 0;
     }
 
     public void DestroyLand()
@@ -97,11 +85,6 @@ public class Land : MonoBehaviour
     }
     #endregion
 
-    public void GenerateCrop()
-    {
-        StartCoroutine(GenerateCropCoroutine());
-    }
-
     public void RemoveCrop()
     {
         for (int i = 0; i < cropObjectList.Length; ++i)
@@ -110,28 +93,6 @@ public class Land : MonoBehaviour
             {
                 Destroy(cropObjectList[i]);
                 cropObjectList[i] = null;
-            }
-        }
-    }
-
-    private IEnumerator GenerateCropCoroutine()
-    {
-        int index = 0;
-        for (int row = 0; row < cropPositionList.Count; ++row)
-        {
-            Vector3[] positionList = cropPositionList[row];
-            for (int col = 0; col < positionList.Length; ++col)
-            {
-                Vector3 position = positionList[col];
-                position.y = 100;
-                if (Physics.Raycast(position, Vector3.down, out RaycastHit hit, 200, 1))
-                {
-                    GameObject clone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    clone.transform.position = hit.point;
-                    cropObjectList[index++] = clone;
-                }
-
-                yield return new WaitForSeconds(.1f);
             }
         }
     }
@@ -187,23 +148,15 @@ public class Land : MonoBehaviour
             case ScheduleType.Plowing:
             case ScheduleType.Seeding:
             case ScheduleType.Harvest:
-                rowDirection = 1;
-                colDirection = 1;
-                preCropRow = 0;
-                preCropColumn = 0;
                 if ((Erandom.Range(0, 2) & 1).Equals(0))
                 {
-                    rowDirection = 1;
-                    colDirection = 1;
-                    preCropRow = 0;
-                    preCropColumn = 0;
+                    moveDirection = 1;
+                    preCropIndex = 0;
                 }
                 else
                 {
-                    rowDirection = -1;
-                    colDirection = -1;
-                    preCropRow = cropPositionList.Count - 1;
-                    preCropColumn = cropPositionList[preCropRow].Length - 1;
+                    moveDirection = -1;
+                    preCropIndex = allCropPositionList.Count - 1;
                 }
                 break;
         }
@@ -220,33 +173,18 @@ public class Land : MonoBehaviour
         switch (preScheduleType)
         {
             case ScheduleType.Weeding:
-                int randomRow = Erandom.Range(0, cropPositionList.Count);
-                int randomColumn = Erandom.Range(0, cropPositionList[randomRow].Length);
-                workPosition = cropPositionList[randomRow][randomColumn];
+                workPosition = allCropPositionList[Erandom.Range(0, allCropPositionList.Count)];
                 return true;
             case ScheduleType.Planting:
             case ScheduleType.Plowing:
             case ScheduleType.Seeding:
             case ScheduleType.Harvest:
-                Vector3[] positionArray = cropPositionList[preCropRow];
-                workPosition = positionArray[preCropColumn];
-                preCropColumn += colDirection;
-
-                if (preCropColumn < 0 || positionArray.Length <= preCropColumn)
+                if (preCropIndex > -1 && preCropIndex < allCropPositionList.Count)
                 {
-                    preCropRow += rowDirection;
-                    if (colDirection < 0)
-                    {
-                        colDirection = 1;
-                        preCropColumn = 0;
-                    }
-                    else if (preCropRow > -1)
-                    {
-                        colDirection = -1;
-                        preCropColumn = cropPositionList[preCropRow].Length - 1;
-                    }
+                    preCropIndex += moveDirection;
+                    return true;
                 }
-                return true;
+                return false;
             case ScheduleType.Raising:
                 workPosition = raisingPositionList[Erandom.Range(0, raisingPositionList.Count)];
                 return true;
