@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UIElements;
 using static UnityEditor.Experimental.AssetDatabaseExperimental.AssetDatabaseCounters;
+using static UnityEditor.Experimental.GraphView.GraphView;
 
 public class TerrainGenerator : MonoBehaviour
 {
@@ -89,25 +90,6 @@ public class TerrainGenerator : MonoBehaviour
 
                     alphaMapArray[position.z, position.x, DirtIndex_1] = 1;
                     preAlphaMapArray[z, x, DirtIndex_1] = 1;
-
-                    /*
-                    Vector3Int randomDirection = direction[Random.Range(0, direction.Length)];
-                    Vector3Int randomPosition = position + randomDirection;
-
-                    int randomX = x + randomDirection.x;
-                    int randomZ = z + randomDirection.z;
-                    if (randomX < 0 || randomZ < 0 || randomX >= scaleX || randomZ >= scaleZ ||
-                        alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_1].Equals(1)) continue;
-
-                    for (int i = 0; i < alphaMapCount; ++i)
-                    {
-                        alphaMapArray[randomPosition.z, randomPosition.x, i] = 0;
-                        preAlphaMapArray[randomZ, randomX, i] = 0;
-                    }
-
-                    alphaMapArray[randomPosition.z, randomPosition.x, DirtIndex_2] = 1;
-                    preAlphaMapArray[randomZ, randomX, DirtIndex_2] = 1;
-                    */
                 }
                 else
                 {
@@ -115,6 +97,36 @@ public class TerrainGenerator : MonoBehaviour
                         preAlphaMapArray[z, x, i] = alphaMapArray[position.z, position.x, i];
                 }
             }
+        }
+        MainTerrain.terrainData.SetAlphamaps(sx, sz, preAlphaMapArray);
+    }
+
+    public void PaintTerrainDirt(int sx, int sz, int scaleX, int scaleZ, Vector3[] positions)
+    {
+        float[,,] preAlphaMapArray = new float[scaleZ, scaleX, alphaMapCount];
+
+        for (int z = 0; z < scaleZ; ++z)
+        {
+            for (int x = 0; x < scaleX; ++x)
+            {
+                Vector3Int position = new Vector3Int(x + sx, 0, z + sz);
+                for (int i = 0; i < alphaMapCount; ++i)
+                    preAlphaMapArray[z, x, i] = alphaMapArray[position.z, position.x, i];
+            }
+        }
+
+        for (int i = 0; i < positions.Length; ++i)
+        {
+            Vector3Int realPosition = Vector3Int.RoundToInt(positions[i] - new Vector3(.5f, 0, .5f));
+            Vector3Int prePosition = realPosition - new Vector3Int(sx, 0, sz);
+            for (int layer = 0; layer < alphaMapCount; ++layer)
+            {
+                alphaMapArray[realPosition.z, realPosition.x, layer] = 0;
+                preAlphaMapArray[prePosition.z, prePosition.x, layer] = 0;
+            }
+
+            alphaMapArray[realPosition.z, realPosition.x, DirtIndex_1] = 1;
+            preAlphaMapArray[prePosition.z, prePosition.x, DirtIndex_1] = 1;
         }
         MainTerrain.terrainData.SetAlphamaps(sx, sz, preAlphaMapArray);
     }

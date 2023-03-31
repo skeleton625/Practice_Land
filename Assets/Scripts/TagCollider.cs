@@ -4,17 +4,22 @@ public class TagCollider : MonoBehaviour
 {
     public string TagName = "";
 
-    public bool IsConflict { get; private set; }
+    private bool isConflict = false;
+
+    public bool IsConflict
+    {
+        get => isConflict;
+    }
 
     private void OnTriggerStay(Collider other)
     {
         if (other.CompareTag(TagName))
-            IsConflict = true;
+            isConflict = true;
     }
 
     private void OnTriggerExit(Collider other)
     {
         if (other.CompareTag(TagName))
-            IsConflict = false;
+            isConflict = false;
     }
 }

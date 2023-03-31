@@ -20,7 +20,7 @@ public class LandGenerator : MonoBehaviour
     [SerializeField] private CubeGenerator LandCollider = null; // Crop 전용 Collider도 추가 필요
     [SerializeField] private CubeGenerator LandCropCollider = null;
     [SerializeField] private CubeGenerator LandRaisingCollider = null;
-    [SerializeField] private TagCollider[] LandWallCollider = null;
+    [SerializeField] private TagCollider LandTagCollider = null;
     [SerializeField] private Land LandObject = null;
 
     private bool isGeneratingLand = false;
@@ -119,14 +119,13 @@ public class LandGenerator : MonoBehaviour
                     {
                         if (Physics.Raycast(ray, out RaycastHit colliderHit, 1000, 8))
                         {
-                            LandPoles[0].position = colliderHit.transform.position;
-                            prePosition = colliderHit.transform.position;
+                            prePosition = Vector3Int.RoundToInt(colliderHit.transform.position);
                         }
                         else
                         {
-                            LandPoles[0].position = hit.point;
-                            prePosition = hit.point;
+                            prePosition = Vector3Int.RoundToInt(hit.point);
                         }
+                        LandPoles[0].position = prePosition;
                     }
 
                     if (Input.GetMouseButtonDown(0))
@@ -146,11 +145,11 @@ public class LandGenerator : MonoBehaviour
                     {
                         if (Physics.Raycast(ray, out RaycastHit colliderHit, 1000, 8))
                         {
-                            prePosition = colliderHit.transform.position;
+                            prePosition = Vector3Int.RoundToInt(colliderHit.transform.position);
                         }
                         else
                         {
-                            prePosition = hit.point;
+                            prePosition = Vector3Int.RoundToInt(hit.point);
                         }
                         ChangeWall(preIndex - 1, polePosition[preIndex - 1], prePosition);
                     }
@@ -195,11 +194,11 @@ public class LandGenerator : MonoBehaviour
                     {
                         if (Physics.Raycast(ray, out RaycastHit colliderHit, 1000, 8))
                         {
-                            prePosition = colliderHit.transform.position;
+                            prePosition = Vector3Int.RoundToInt(colliderHit.transform.position);
                         }
                         else
                         {
-                            prePosition = hit.point;
+                            prePosition = Vector3Int.RoundToInt(hit.point);
                         }
 
                         polePosition[preIndex] = prePosition;
@@ -228,7 +227,7 @@ public class LandGenerator : MonoBehaviour
                             rotZ.y = Mathf.Max(rotatedPositions[i].z, rotZ.y);
                         }
 
-                        bool isPossible = GetCropCounts(ref count);
+                        bool isPossible = !LandTagCollider.IsConflict && GetCropCounts(ref count);
 
                         float sumAngle = 0f;
                         for (int i = 0; i < 4; ++i)
@@ -238,12 +237,6 @@ public class LandGenerator : MonoBehaviour
                             int pole3 = (i + 2) % 4;
                             sumAngle += Vector3.Angle((polePosition[pole1] - polePosition[pole2]).normalized,
                                                       (polePosition[pole3] - polePosition[pole2]).normalized);
-                        
-                            if (LandWallCollider[i].IsConflict)
-                            {
-                                isPossible = false;
-                                break;
-                            }
                         }
 
                         if (isPossible && count <= 100 && sumAngle > 356)
@@ -260,11 +253,7 @@ public class LandGenerator : MonoBehaviour
 
                     if (Input.GetMouseButtonDown(0))
                     {
-                        Vector3[] largePolePosition = new Vector3[polePosition.Length];
-                        for (int i = 0; i < largePolePosition.Length; ++i)
-                            largePolePosition[i] = polePosition[i] + (polePosition[i] - center).normalized;
-                        LandCollider.CreateCube(largePolePosition);
-
+                        LandCollider.CreateCube(polePosition);
                         int fixMinX = int.MaxValue, fixMaxX = 0;
                         int fixMinZ = int.MaxValue, fixMaxZ = 0;
                         for (int i = 0; i < polePosition.Length; ++i)
@@ -274,9 +263,8 @@ public class LandGenerator : MonoBehaviour
                             fixMaxX = Mathf.CeilToInt(Mathf.Max(polePosition[i].x, fixMaxX));
                             fixMaxZ = Mathf.CeilToInt(Mathf.Max(polePosition[i].z, fixMaxZ));
                         }
-                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX - 2, fixMinZ - 2, fixMaxX - fixMinX + 2, fixMaxZ - fixMinZ + 2, 64);
+                        TerrainGenerator.instance.PaintTerrainDirt(fixMinX, fixMinZ, fixMaxX - fixMinX, fixMaxZ - fixMinZ, 64);
 
-                        LandCollider.CreateCube(polePosition);
                         CompleteLand(rotX, rotZ, polePosition, cropPolePosition, cropAngle);
                         isActive = false;
                     }
@@ -361,19 +349,19 @@ public class LandGenerator : MonoBehaviour
         }
         LandRaisingCollider.CreateCube(raisingPolePosition);
 
-        bool isEven = true;
+        bool isEvenX = true, isEvenZ = true;
         List<Vector3> raisingPositionList = new List<Vector3>();
         List<Vector3> allCropPositionList = new List<Vector3>();
         if ((polePosition[1] - polePosition[0]).magnitude > (polePosition[2] - polePosition[1]).magnitude)
         {
             for (float z = rotZ.x; z < rotZ.y; ++z)
             {
-                isEven = !isEven;
-                if (isEven) continue;
+                isEvenZ = !isEvenZ;
                 for (float x = rotX.x; x < rotX.y; ++x)
                 {
+                    isEvenX = !isEvenX;
                     Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                    if (!GetCropPosition(ref position)) continue;
+                    if (isEvenX || isEvenZ || !GetCropPosition(ref position)) continue;
 
                     allCropPositionList.Add(position);
                     if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
@@ -384,13 +372,12 @@ public class LandGenerator : MonoBehaviour
         {
             for (float x = rotX.x; x < rotX.y; ++x)
             {
-                isEven = !isEven;
-                if (isEven) continue;
-
+                isEvenX = !isEvenX;
                 for (float z = rotZ.x; z < rotZ.y; ++z)
                 {
+                    isEvenZ = !isEvenZ;
                     Vector3 position = Quaternion.Euler(0, -cropAngle, 0) * new Vector3(x, 0, z) + polePosition[0];
-                    if (!GetCropPosition(ref position)) continue;
+                    if (isEvenX || isEvenZ || !GetCropPosition(ref position)) continue;
 
                     allCropPositionList.Add(position);
                     if (GetRaisingPosition(ref position)) raisingPositionList.Add(position);
@@ -401,9 +388,9 @@ public class LandGenerator : MonoBehaviour
         // GENERATE LAND
         Land landClone = Instantiate(LandObject, LandCollider.transform.position, Quaternion.identity);
         landClone.InitializeData(ref allCropPositionList, ref raisingPositionList, landPoleArray, LandCollider.GeneratedMseh, LandCropCollider.GeneratedMseh);
-        LandCollider.RefreshCube();
-        LandCropCollider.RefreshCube();
-        LandRaisingCollider.RefreshCube();
+        //LandCollider.RefreshCube();
+        //LandCropCollider.RefreshCube();
+        //LandRaisingCollider.RefreshCube();
 
         // GENERATE LAND WALL
         for (int i = 0; i < polePosition.Length; ++i)
